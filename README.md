@@ -1,3 +1,5 @@
+<img src="addon/content/icons/zotero_gemini.svg" alt="CI" width="100">
+
 # Zotero Gemini
 
 Zotero 7 plugin for interacting with Google Gemini AI models.
