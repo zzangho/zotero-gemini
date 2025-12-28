@@ -8,6 +8,7 @@ Based on: [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-
 
 - **Context-Aware Chat**: Interrogate selected Zotero items. Context includes PDF full-text and existing Zotero notes.
   ![Chat Interface Example](docs/chat_interface.png)
+  [Captured Paper](https://ieeexplore.ieee.org/document/10122914)
 - **Session Persistence**: Chat history is saved per item and restored upon reopening.
 - **Window Management**: 
   - Toggle visibility with `Ctrl+/` (or `Cmd+/` on Mac).
