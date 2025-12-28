@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" xmlns:html="http://www.w3.org/1999/xhtml"
+    title="Gemini Chat" width="600" height="500" onload="onLoad()">
+    <!-- We can load a script here or handle it via window arguments/injection -->
+    <script src="chrome://zotero/content/include.js" />
+    <script>< ![CDATA[
+            let item;
+            let contextParts;
+            let GeminiService;
+            let ContextBuilder;
+            let ZoteroObj;
+
+        function onLoad() {
+            // Retrieve arguments passed from window.openDialog
+            const args = window.arguments[0];
+            item = args.item;
+            GeminiService = args.GeminiService;
+            ZoteroObj = args.Zotero;
+
+            document.getElementById("status").textContent = `Chatting about: ${item.getField('title')}`;
+
+            // Build context in background
+            document.getElementById("status").textContent = "Building context (reading PDF & notes)...";
+            args.ContextBuilder.buildContext(item).then(ctx => {
+                contextParts = ctx;
+                document.getElementById("status").textContent = "Ready. Context loaded.";
+                document.getElementById("send-btn").disabled = false;
+                appendMessage("system", "Context loaded. You can ask questions now.");
+            }).catch(err => {
+                document.getElementById("status").textContent = "Error loading context.";
+                appendMessage("system", "Error: " + err);
+            });
+
+            // Input Enter key
+            document.getElementById("chat-input").addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                }
+            });
+        }
+
+        async function send() {
+            const input = document.getElementById("chat-input");
+            const question = input.value.trim();
+            if (!question) return;
+
+            appendMessage("user", question);
+            input.value = "";
+
+            document.getElementById("status").textContent = "Gemini is thinking...";
+            document.getElementById("send-btn").disabled = true;
+
+            try {
+                // Call Gemini Service
+                // We use the full context + conversation history method if possible, 
+                // but for V1 we just send the full context + this question.
+                // Stateless for now, but context is re-sent.
+                const answer = await GeminiService.query(contextParts, question);
+                appendMessage("gemini", answer);
+                document.getElementById("status").textContent = "Ready.";
+            } catch (err) {
+                appendMessage("system", "Error: " + err.message);
+                document.getElementById("status").textContent = "Error.";
+            } finally {
+                document.getElementById("send-btn").disabled = false;
+            }
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById("chat-history");
+            const div = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+            div.style.cssText = `
+                padding: 10px; 
+                margin: 5px; 
+                border-radius: 5px; 
+                max-width: 90%;
+            `;
+
+            if (role === "user") {
+                div.style.backgroundColor = "#e3f2fd";
+                div.style.alignSelf = "flex-end";
+                div.style.marginLeft = "auto";
+            } else if (role === "gemini") {
+                div.style.backgroundColor = "#f5f5f5";
+                div.style.alignSelf = "flex-start";
+            } else {
+                div.style.backgroundColor = "#fff3cd"; // System
+                div.style.alignSelf = "center";
+            }
+
+            // Simple markdown-ish rendering (bold, newline)
+            // For now just plain text with whitespace preservation
+            div.style.whiteSpace = "pre-wrap";
+            div.textContent = text; // Safer than innerHTML
+
+            container.appendChild(div);
+            div.scrollIntoView({ behavior: "smooth" });
+        }
+        
+        function saveAsNote() {
+            // Find last answer
+            // Ideally we save the whole conversation or specific parts.
+            // For now, let's just save the whole conversation history as a note.
+            const history = document.getElementById("chat-history").textContent;
+
+            // We need to call Zotero to save.
+            // window.opener or ZoteroObj can work.
+
+            const noteItem = new ZoteroObj.Item('note');
+            noteItem.parentID = item.id;
+            noteItem.setNote(`<h1>Gemini Chat Analysis</h1><pre>${history}</pre>`);
+            noteItem.addTag("gemini-analysis");
+            noteItem.saveTx().then(() => {
+                alert("Saved as note!");
+            });
+        }
+        ]]></script>
+
+    <vbox flex="1" style="padding: 10px;">
+        <label id="status" value="Initializing..." />
+        <html:div id="chat-history"
+            style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background: white;">
+            <!-- Messages go here -->
+        </html:div>
+        <hbox align="center">
+            <html:textarea id="chat-input" rows="3" style="flex: 1; margin-right: 5px;"
+                placeholder="Type a message (Ctrl+Enter to newline, Enter to send)" />
+            <button id="send-btn" label="Send" oncommand="send()" disabled="true" />
+        </hbox>
+        <hbox pack="end" style="margin-top: 5px;">
+            <button label="Save Chat to Note" oncommand="saveAsNote()" />
+        </hbox>
+    </vbox>
+</window>

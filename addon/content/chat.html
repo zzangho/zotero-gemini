@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Gemini Chat</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            background-color: #f9f9f9;
+        }
+
+        #status {
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        #chat-history {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 85%;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+
+        .message.user {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .message.gemini {
+            background-color: #e9ecef;
+            color: #333;
+            align-self: flex-start;
+        }
+
+        .message.system {
+            background-color: #fff3cd;
+            color: #856404;
+            align-self: center;
+            font-size: 0.9em;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        textarea {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+            height: 60px;
+            font-family: inherit;
+        }
+
+        button {
+            padding: 0 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        #send-btn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #send-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        #save-btn {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        #save-btn:hover {
+            background-color: #5a6268;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            /* Changed from flex-end */
+            align-items: center;
+            margin-top: 5px;
+        }
+
+        #action-status {
+            color: #000;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-left: 5px;
+        }
+
+        /* Markdown Styles */
+        .message h1,
+        .message h2,
+        .message h3 {
+            margin-top: 10px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .message h1 {
+            font-size: 1.4em;
+        }
+
+        .message h2 {
+            font-size: 1.2em;
+        }
+
+        .message h3 {
+            font-size: 1.1em;
+        }
+
+        .message strong {
+            font-weight: bold;
+        }
+
+        .message .list-item {
+            margin-left: 20px;
+            display: block;
+        }
+
+        .message p {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="status">Initializing...</div>
+    <div id="chat-history"></div>
+
+    <div class="input-area">
+        <textarea id="chat-input" placeholder="Type a message (Enter to send, Shift+Enter for newline)"></textarea>
+        <button id="send-btn" disabled>Send</button>
+    </div>
+
+    <div class="controls">
+        <span id="model-status" style="margin-right: auto; color: #555; font-size: 0.85em; padding-left: 5px;"></span>
+        <span id="action-status"></span>
+        <div>
+            <button id="save-btn">Save Last Answer</button>
+            <button id="exit-btn" style="background-color: #dc3545; color: white; margin-left: 10px;">End
+                Session</button>
+        </div>
+    </div>
+
+    <script>
+        let item;
+        let contextParts;
+        let GeminiService;
+        let ContextBuilder;
+        let ZoteroObj;
+
+        // Let's replace the AppendMessage and Add ParseMarkdown.
+
+        function parseMarkdown(text) {
+            if (!text) return "";
+            let html = text;
+
+            // Escape HTML (Basic) - prevent injection if we were worried, but here input is trusted-ish
+            html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+            // Bold
+            html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+
+            // List Items (Simple)
+            html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<div class="list-item">• $1</div>');
+
+            // Horizontal Rule
+            html = html.replace(/^---$/gim, '<hr>');
+
+            // Newlines to <br>
+            // We want to avoid double breaks after headers/divs
+            html = html.replace(/\n/g, '<br>');
+            html = html.replace(/(<\/h[1-6]>|<\/div>|<\/hr>)<br>/g, '$1');
+
+            return html;
+        }
+
+        /* ... window.onload ... */
+        window.onload = function () {
+            try {
+                const args = window.arguments[0];
+                item = args.item;
+                GeminiService = args.GeminiService;
+                ZoteroObj = args.Zotero;
+                ContextBuilder = args.ContextBuilder;
+
+                const itemTitle = item.getField('title');
+                const setStatusToTitle = () => {
+                    document.getElementById("status").textContent = `Chatting about: ${itemTitle}`;
+                };
+                setStatusToTitle();
+
+                const updateModelDisplay = () => {
+                    try {
+                        let currentModel = ZoteroObj.Prefs.get("extensions.zotero.zoterogemini.geminiModel");
+                        // Debug Log
+                        console.log("Gemini Plugin: Retrieved Model Pref:", currentModel);
+
+                        if (!currentModel) {
+                            currentModel = "gemini-1.5-flash (Default)";
+                        }
+
+                        const modelStatusElement = document.getElementById("model-status");
+                        if (modelStatusElement) {
+                            modelStatusElement.textContent = `Model: ${currentModel}`;
+                        }
+                    } catch (e) {
+                        console.error("Gemini Plugin: Failed to get model pref", e);
+                        document.getElementById("model-status").textContent = "Model: Unknown";
+                    }
+                };
+
+                updateModelDisplay();
+
+                // Update on focus in case user changed settings while chat was open
+                window.addEventListener("focus", updateModelDisplay);
+
+                // 1. Restore Session
+                const previousSession = GeminiService.getSession(item.id);
+                if (previousSession.length > 0) {
+                    document.getElementById("status").textContent = "Restoring session...";
+                    // Pass false to avoid duplication
+                    previousSession.forEach(msg => appendMessage(msg.role, msg.text, false));
+                    setStatusToTitle();
+                } else {
+                    document.getElementById("status").textContent = "Building context...";
+                    appendMessage("system", "Analyzing PDF and notes... Please wait.", false);
+                }
+
+                ContextBuilder.buildContext(item).then(ctx => {
+                    contextParts = ctx;
+                    setStatusToTitle();
+                    document.getElementById("send-btn").disabled = false;
+                    // System message, no save needed
+                    if (previousSession.length === 0) appendMessage("system", "Context loaded. Ask a question!", false);
+                }).catch(err => {
+                    document.getElementById("status").textContent = "Error loading context.";
+                    appendMessage("system", "Error: " + err, false);
+                });
+
+                // Listeners
+                document.getElementById("send-btn").addEventListener("click", send);
+                document.getElementById("save-btn").addEventListener("click", saveAsNote);
+                document.getElementById("exit-btn").addEventListener("click", exitSession);
+
+                const input = document.getElementById("chat-input");
+                input.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                    }
+                });
+
+                // Add Global Shortcut Handler for Ctrl+/ (Toggle/Close)
+                document.addEventListener("keydown", (e) => {
+                    if (e.key === "/" && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        // Logic: If this window is focused and user hits Ctrl+/, they want to toggle (hide) it.
+                        // Since we are inside the window, hiding it is effectively closing it (or window.close)
+                        // The prompt.ts toggle logic handles opening/closing from main window.
+                        // Here we just close ourselves.
+                        window.close();
+                    }
+                });
+
+                input.focus();
+
+                // Save session on unload and Geometry
+                window.addEventListener("unload", () => {
+                    // Save window geometry
+                    try {
+                        const prefix = "extensions.zotero.zoterogemini.";
+                        ZoteroObj.Prefs.set(prefix + "chatWindowX", window.screenX, true);
+                        ZoteroObj.Prefs.set(prefix + "chatWindowY", window.screenY, true);
+                        ZoteroObj.Prefs.set(prefix + "chatWindowWidth", window.innerWidth, true);
+                        ZoteroObj.Prefs.set(prefix + "chatWindowHeight", window.innerHeight, true);
+                    } catch (e) {
+                        console.error("Failed to save window geometry", e);
+                    }
+                });
+
+            } catch (e) {
+                console.error(e);
+                document.getElementById("status").textContent = "Init Error: " + e.message;
+            }
+        };
+
+        async function send() {
+            const input = document.getElementById("chat-input");
+            const question = input.value.trim();
+            if (!question) return;
+
+            appendMessage("user", question, true); // Save user message
+            input.value = "";
+
+            document.getElementById("status").textContent = "Gemini is thinking...";
+            document.getElementById("send-btn").disabled = true;
+
+            try {
+                const answer = await GeminiService.query(contextParts, question);
+                appendMessage("gemini", answer, true); // Save gemini response
+                const itemTitle = item.getField('title');
+                document.getElementById("status").textContent = `Chatting about: ${itemTitle}`;
+            } catch (err) {
+                appendMessage("system", "Error: " + err.message, false);
+                document.getElementById("status").textContent = "Error.";
+            } finally {
+                document.getElementById("send-btn").disabled = false;
+                input.focus();
+            }
+        }
+
+        function appendMessage(role, text, save = true) {
+            const container = document.getElementById("chat-history");
+            const div = document.createElement("div");
+            div.className = `message ${role}`;
+
+            // Apply Markdown Parsing only for Gemini and System? 
+            // User might want to see what they typed (plain). 
+            // Better to parse all for consistency.
+            div.innerHTML = parseMarkdown(text);
+
+            container.appendChild(div);
+            div.scrollIntoView({ behavior: "smooth" });
+
+            // Save raw text for session (not HTML)
+            // Re-saving from DOM innerText is messy if we used HTML.
+            // Better to keep a parallel history array in memory? 
+            // Or just extract textContent. 
+
+            // Current save logic reads DOM children.
+            // To fix state: Update GeminiService immediately with the raw text.
+            if (save && role !== "system") {
+                let currentSession = GeminiService.getSession(item.id);
+                currentSession.push({ role, text });
+                GeminiService.saveSession(item.id, currentSession);
+            }
+        }
+
+        function exitSession() {
+            if (confirm("End current session? This will clear the chat history.")) {
+                GeminiService.clearSession(item.id);
+                window.close();
+            }
+        }
+
+        // Removing old DOM-reading save logic from saveAsNote too
+        function saveAsNote() {
+            const session = GeminiService.getSession(item.id);
+            // Find last gemini message
+            const lastGeminiMsg = session.slice().reverse().find(m => m.role === 'gemini');
+
+            if (!lastGeminiMsg) {
+                const status = document.getElementById("action-status");
+                status.textContent = "No Gemini response found.";
+                status.style.color = "#000";
+                setTimeout(() => status.textContent = "", 3000);
+                return;
+            }
+
+            // Format as HTML
+            const htmlContent = `<div>${parseMarkdown(lastGeminiMsg.text)}</div>`;
+
+            const noteItem = new ZoteroObj.Item('note');
+            noteItem.parentID = item.id;
+            noteItem.setNote(`<h1>Gemini Analysis</h1>${htmlContent}`);
+            noteItem.addTag("gemini-analysis");
+            noteItem.saveTx().then(() => {
+                const status = document.getElementById("action-status");
+                status.textContent = "Saved to New Note!";
+                status.style.color = "#000";
+                setTimeout(() => status.textContent = "", 3000);
+            });
+        }
+    </script>
+</body>
+
+</html>

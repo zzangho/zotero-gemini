@@ -7,8 +7,14 @@
 declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
-      "enable": boolean;
-      "input": string;
+      "geminiApiKey": string;
+      "geminiModel": string;
+      "geminiModelList": string;
+      "chatWindowX": number;
+      "chatWindowY": number;
+      "chatWindowWidth": number;
+      "chatWindowHeight": number;
+      "systemInstruction": string;
     };
   }
 }

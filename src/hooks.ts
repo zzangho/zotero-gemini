@@ -9,6 +9,8 @@ import { getString, initLocale } from "./utils/locale";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { createZToolkit } from "./utils/ztoolkit";
 
+import { GeminiPrompt } from "./modules/prompt";
+
 async function onStartup() {
   await Promise.all([
     Zotero.initializationPromise,
@@ -20,19 +22,32 @@ async function onStartup() {
 
   BasicExampleFactory.registerPrefs();
 
-  BasicExampleFactory.registerNotifier();
+  // BasicExampleFactory.registerNotifier();
 
-  KeyExampleFactory.registerShortcuts();
+  // KeyExampleFactory.registerShortcuts();
 
-  await UIExampleFactory.registerExtraColumn();
+  // Register Gemini Chat Shortcut (Ctrl+/)
+  ztoolkit.Keyboard.register((ev, keyOptions) => {
+    // Check for Ctrl+/ (Windows/Linux) or Cmd+/ (Mac)
+    const isAccel = Zotero.isMac ? ev.metaKey : ev.ctrlKey;
+    if (isAccel && ev.key === "/") {
+      // Check if item is selected
+      const items = (Zotero.getMainWindow() as any).ZoteroPane.getSelectedItems();
+      if (items.length === 1 && items[0].isRegularItem()) {
+        GeminiPrompt.openChat(items[0]);
+        ev.preventDefault(); // Consume event
+      } else {
+        ztoolkit.log("Gemini Shortcut triggered but no single regular item selected.");
+      }
+    }
+  });
 
-  await UIExampleFactory.registerExtraColumnWithCustomCell();
+  // await UIExampleFactory.registerExtraColumn();
+  // await UIExampleFactory.registerExtraColumnWithCustomCell();
+  // UIExampleFactory.registerItemPaneCustomInfoRow();
+  // UIExampleFactory.registerItemPaneSection();
+  // UIExampleFactory.registerReaderItemPaneSection();
 
-  UIExampleFactory.registerItemPaneCustomInfoRow();
-
-  UIExampleFactory.registerItemPaneSection();
-
-  UIExampleFactory.registerReaderItemPaneSection();
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -68,19 +83,13 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
     text: `[30%] ${getString("startup-begin")}`,
   });
 
-  UIExampleFactory.registerStyleSheet(win);
-
-  UIExampleFactory.registerRightClickMenuItem();
-
-  UIExampleFactory.registerRightClickMenuPopup(win);
-
-  UIExampleFactory.registerWindowMenuWithSeparator();
-
-  PromptExampleFactory.registerNormalCommandExample();
-
-  PromptExampleFactory.registerAnonymousCommandExample(win);
-
-  PromptExampleFactory.registerConditionalCommandExample();
+  // UIExampleFactory.registerStyleSheet(win);
+  // UIExampleFactory.registerRightClickMenuItem();
+  // UIExampleFactory.registerRightClickMenuPopup(win);
+  // UIExampleFactory.registerWindowMenuWithSeparator();
+  // PromptExampleFactory.registerNormalCommandExample();
+  // PromptExampleFactory.registerAnonymousCommandExample(win);
+  // PromptExampleFactory.registerConditionalCommandExample();
 
   await Zotero.Promise.delay(1000);
 
@@ -90,7 +99,7 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   });
   popupWin.startCloseTimer(5000);
 
-  addon.hooks.onDialogEvents("dialogExample");
+  // addon.hooks.onDialogEvents("dialogExample");
 }
 
 async function onMainWindowUnload(win: Window): Promise<void> {
@@ -124,7 +133,7 @@ async function onNotify(
     type == "tab" &&
     extraData[ids[0]].type == "reader"
   ) {
-    BasicExampleFactory.exampleNotifierCallback();
+    // BasicExampleFactory.exampleNotifierCallback();
   } else {
     return;
   }
@@ -140,6 +149,96 @@ async function onPrefsEvent(type: string, data: { [key: string]: any }) {
   switch (type) {
     case "load":
       registerPrefsScripts(data.window);
+      // Restore cached models if available
+      try {
+        const savedListStr = Zotero.Prefs.get("extensions.zotero.zoterogemini.geminiModelList") as string;
+        if (savedListStr) {
+          const savedModels = JSON.parse(savedListStr);
+          if (Array.isArray(savedModels) && savedModels.length > 0) {
+            const doc = data.window.document as Document;
+            const select = doc.getElementById(`zotero-prefpane-${addon.data.config.addonRef}-geminiModel`) as HTMLSelectElement;
+            if (select) {
+              const currentVal = Zotero.Prefs.get("extensions.zotero.zoterogemini.geminiModel");
+              select.innerHTML = "";
+              savedModels.forEach(m => {
+                const opt = doc.createElement("option");
+                opt.value = m;
+                opt.text = m;
+                select.appendChild(opt);
+              });
+              if (currentVal) select.value = currentVal as string;
+
+              // Explicit manual listener for robustness
+              select.addEventListener('change', () => {
+                Zotero.Prefs.set("extensions.zotero.zoterogemini.geminiModel", select.value);
+              });
+            }
+          }
+        }
+      } catch (e) {
+        ztoolkit.log("Failed to load cached models", e);
+      }
+      break;
+    case "verify":
+      (async () => {
+        try {
+          // Must import dynamic or use global implementation?
+          // Using the GeminiService from modules (assuming it's loaded)
+          // We need to import GeminiService in hooks.ts or access it via require
+          const GeminiService = (await import("./modules/gemini")).GeminiService;
+          const models = await GeminiService.listModels();
+
+          // Save list to prefs
+          Zotero.Prefs.set("extensions.zotero.zoterogemini.geminiModelList", JSON.stringify(models));
+
+          data.window.alert(`API Key Verified! Available Models:\n${models.join(", ")}`);
+
+          // Update dropdown in the pref window
+          const doc = data.window.document as Document;
+          const select = doc.getElementById(`zotero-prefpane-${addon.data.config.addonRef}-geminiModel`) as HTMLSelectElement;
+          if (select) {
+            const currentVal = select.value;
+            // Clear existing options
+            select.innerHTML = "";
+            models.forEach(m => {
+              const opt = doc.createElement("option");
+              opt.value = m;
+              opt.text = m;
+              select.appendChild(opt);
+            });
+            // Try to keep current selection if valid, else default
+            if (models.includes(currentVal)) {
+              select.value = currentVal;
+            } else if (models.includes("gemini-1.5-flash")) {
+              select.value = "gemini-1.5-flash";
+            }
+
+            if (select.value) {
+              // Initial save of the selected value to be sure
+              Zotero.Prefs.set("extensions.zotero.zoterogemini.geminiModel", select.value);
+            }
+
+            // Force update UI and pref binding
+            select.dispatchEvent(new data.window.Event('change', { bubbles: true }));
+            select.dispatchEvent(new data.window.Event('command', { bubbles: true }));
+
+            // Add separate listener for subsequent changes
+            select.addEventListener('change', () => {
+              Zotero.Prefs.set("extensions.zotero.zoterogemini.geminiModel", select.value);
+            });
+          }
+        } catch (e: any) {
+          data.window.alert("Verification Failed: " + (e.message || e));
+        }
+      })();
+      break;
+    case "saveInstruction":
+      const doc = data.window.document as Document;
+      const textarea = doc.getElementById(`zotero-prefpane-${addon.data.config.addonRef}-systemInstruction`) as HTMLTextAreaElement;
+      if (textarea) {
+        Zotero.Prefs.set("extensions.zotero.zoterogemini.systemInstruction", textarea.value);
+        data.window.alert("System Instruction Saved!");
+      }
       break;
     default:
       return;
@@ -149,10 +248,10 @@ async function onPrefsEvent(type: string, data: { [key: string]: any }) {
 function onShortcuts(type: string) {
   switch (type) {
     case "larger":
-      KeyExampleFactory.exampleShortcutLargerCallback();
+      // KeyExampleFactory.exampleShortcutLargerCallback();
       break;
     case "smaller":
-      KeyExampleFactory.exampleShortcutSmallerCallback();
+      // KeyExampleFactory.exampleShortcutSmallerCallback();
       break;
     default:
       break;
@@ -161,21 +260,21 @@ function onShortcuts(type: string) {
 
 function onDialogEvents(type: string) {
   switch (type) {
-    case "dialogExample":
-      HelperExampleFactory.dialogExample();
-      break;
-    case "clipboardExample":
-      HelperExampleFactory.clipboardExample();
-      break;
-    case "filePickerExample":
-      HelperExampleFactory.filePickerExample();
-      break;
-    case "progressWindowExample":
-      HelperExampleFactory.progressWindowExample();
-      break;
-    case "vtableExample":
-      HelperExampleFactory.vtableExample();
-      break;
+    // case "dialogExample":
+    //   HelperExampleFactory.dialogExample();
+    //   break;
+    // case "clipboardExample":
+    //   HelperExampleFactory.clipboardExample();
+    //   break;
+    // case "filePickerExample":
+    //   HelperExampleFactory.filePickerExample();
+    //   break;
+    // case "progressWindowExample":
+    //   HelperExampleFactory.progressWindowExample();
+    //   break;
+    // case "vtableExample":
+    //   HelperExampleFactory.vtableExample();
+    //   break;
     default:
       break;
   }

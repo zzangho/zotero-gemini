@@ -73,7 +73,7 @@ export class BasicExampleFactory {
       pluginID: addon.data.config.addonID,
       src: rootURI + "content/preferences.xhtml",
       label: getString("prefs-title"),
-      image: `chrome://${addon.data.config.addonRef}/content/icons/favicon.png`,
+      image: rootURI + "content/icons/zotero_gemini.svg",
     });
   }
 }
@@ -138,7 +138,7 @@ export class UIExampleFactory {
 
   @example
   static registerRightClickMenuItem() {
-    const menuIcon = `chrome://${addon.data.config.addonRef}/content/icons/favicon@0.5x.png`;
+    const menuIcon = rootURI + "content/icons/zotero_gemini.svg";
     // item menuitem with icon
     ztoolkit.Menu.register("item", {
       tag: "menuitem",
@@ -354,7 +354,7 @@ export class PromptExampleFactory {
     ztoolkit.Prompt.register([
       {
         name: "Normal Command Test",
-        label: "Plugin Template",
+        label: "Zotero Gemini",
         callback(prompt) {
           ztoolkit.getGlobal("alert")("Command triggered!");
         },

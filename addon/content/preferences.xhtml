@@ -1,33 +1,36 @@
 <linkset>
   <html:link rel="localization" href="__addonRef__-preferences.ftl" />
 </linkset>
-<groupbox
-  onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
->
-  <label><html:h2 data-l10n-id="pref-title"></html:h2></label>
-  <checkbox
-    id="zotero-prefpane-__addonRef__-enable"
-    preference="enable"
-    data-l10n-id="pref-enable"
-  />
-  <hbox>
-    <html:label
-      for="zotero-prefpane-__addonRef__-input"
-      data-l10n-id="pref-input"
-    ></html:label>
-    <html:input
-      type="text"
-      id="zotero-prefpane-__addonRef__-input"
-      preference="input"
-    ></html:input>
+<groupbox onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })">
+  <label>
+    <html:h2 data-l10n-id="pref-title"></html:h2>
+  </label>
+  <hbox align="center">
+    <html:label for="zotero-prefpane-__addonRef__-geminiApiKey" data-l10n-id="pref-geminiApiKey"></html:label>
+    <html:input type="password" id="zotero-prefpane-__addonRef__-geminiApiKey" preference="geminiApiKey" flex="1">
+    </html:input>
+    <html:button label="Check" id="zotero-prefpane-__addonRef__-check-api"
+      onclick="Zotero.__addonInstance__.hooks.onPrefsEvent('verify', { window })" style="margin-left: 5px;">Verify
+    </html:button>
   </hbox>
-  <hbox class="virtualized-table-container" flex="1" height="300px">
-    <html:div id="__addonRef__-table-container" />
+  <hbox align="center">
+    <html:label for="zotero-prefpane-__addonRef__-geminiModel" data-l10n-id="pref-geminiModel"></html:label>
+    <html:select id="zotero-prefpane-__addonRef__-geminiModel" preference="geminiModel" flex="1">
+      <html:option value="gemini-1.5-flash">gemini-1.5-flash</html:option>
+      <html:option value="gemini-1.5-pro">gemini-1.5-pro</html:option>
+    </html:select>
   </hbox>
+  <vbox>
+    <html:label for="zotero-prefpane-__addonRef__-systemInstruction" data-l10n-id="pref-systemInstruction"></html:label>
+    <html:textarea id="zotero-prefpane-__addonRef__-systemInstruction" preference="systemInstruction" rows="4"
+      style="margin-bottom: 5px; font-family: sans-serif;">
+    </html:textarea>
+    <html:button label="Save Instruction" id="zotero-prefpane-__addonRef__-save-instruction"
+      onclick="Zotero.__addonInstance__.hooks.onPrefsEvent('saveInstruction', { window })">Save Instruction
+    </html:button>
+  </vbox>
 </groupbox>
 <vbox>
-  <html:label
-    data-l10n-id="pref-help"
-    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
-  ></html:label>
+  <html:label data-l10n-id="pref-help"
+    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'></html:label>
 </vbox>

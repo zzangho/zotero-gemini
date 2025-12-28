@@ -1,10 +1,10 @@
 startup-begin = Addon is loading
 startup-finish = Addon is ready
-menuitem-label = Addon Template: Helper Examples
-menupopup-label = Addon Template: Menupopup
-menuitem-submenulabel = Addon Template
-menuitem-filemenulabel = Addon Template: File Menuitem
-prefs-title = Template
+menuitem-label = Zotero Gemini: Helper Examples
+menupopup-label = Zotero Gemini: Menupopup
+menuitem-submenulabel = Zotero Gemini
+menuitem-filemenulabel = Zotero Gemini: File Menuitem
+prefs-title = Zotero Gemini
 prefs-table-title = Title
 prefs-table-detail = Detail
 tabpanel-lib-tab-label = Lib Tab
