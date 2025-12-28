@@ -7,7 +7,7 @@ Based on: [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-
 ## Features
 
 - **Context-Aware Chat**: Interrogate selected Zotero items. Context includes PDF full-text and existing Zotero notes.
-  ![Chat Interface Example](doc/chat_interface.png)
+  ![Chat Interface Example](docs/chat_interface.png)
 - **Session Persistence**: Chat history is saved per item and restored upon reopening.
 - **Window Management**: 
   - Toggle visibility with `Ctrl+/` (or `Cmd+/` on Mac).
@@ -16,7 +16,7 @@ Based on: [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-
 - **Note Integration**: Export the last AI response as a Zotero Note.
 - **Dynamic Model Selection**: Select from available Gemini models (e.g., flash, pro) via settings.
 - **API Verification**: In-settings API key validation and model list fetching.
-  ![Preferences Configuration](doc/preferences.png)
+  ![Preferences Configuration](docs/preferences.png)
 
 ## Environment
 
