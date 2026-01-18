@@ -71,6 +71,45 @@ export class GeminiService {
             throw e;
         }
     }
+    static async synthesize(notes: string[]): Promise<string> {
+        const key = this.apiKey;
+        if (!key) throw new Error("API Key not set");
+
+        const combinedNotes = notes.join("\n\n---\n\n");
+        const prompt = `
+Task: Synthesize the following notes into a single, comprehensive "Final Knowledge" document.
+Requirements:
+1. Integrate information from all provided notes into a cohesive structure.
+2. Remove redundancies but preserve unique details.
+3. Use a clear logic flow (e.g., Introduction -> Core Concepts -> Details -> Conclusion).
+4. ESSENTIAL: Preserve all valid mathematical formulas, data, and technical definitions logic.
+5. Output format must be HTML (using <h1>, <h2>, <ul>, <p>, etc.).
+
+Source Notes:
+${combinedNotes}
+`;
+
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }]
+        };
+
+        try {
+            const response = await fetch(`${this.baseUrl}?key=${key}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`Gemini API Error: ${response.statusText}`);
+
+            const json = await response.json() as any;
+            return json.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to synthesize.";
+        } catch (e) {
+            console.error("Synthesize Error", e);
+            throw e;
+        }
+    }
+
     static async listModels(): Promise<string[]> {
         const key = this.apiKey;
         if (!key) throw new Error("API Key not set");

@@ -29,6 +29,9 @@ async function onStartup() {
   // Register Gemini Chat Shortcut (Ctrl+/)
   ztoolkit.Keyboard.register((ev, keyOptions) => {
     // Check for Ctrl+/ (Windows/Linux) or Cmd+/ (Mac)
+    // Ensure we only trigger on keydown to avoid double-firing on keyup
+    if (ev.type !== 'keydown') return;
+
     const isAccel = Zotero.isMac ? ev.metaKey : ev.ctrlKey;
     if (isAccel && ev.key === "/") {
       // Check if item is selected

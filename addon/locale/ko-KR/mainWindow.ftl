@@ -1,0 +1,11 @@
+item-section-example1-head-text =
+    .label = Zotero Gemini: 항목 정보
+item-section-example1-sidenav-tooltip =
+    .tooltiptext = Zotero Gemini 섹션 (항목 정보)
+item-section-example2-head-text =
+    .label = Zotero Gemini: 리더 [{$status}]
+item-section-example2-sidenav-tooltip =
+    .tooltiptext = Zotero Gemini 섹션 (리더)
+item-section-example2-button-tooltip =
+    .tooltiptext = 이 섹션 등록 해제
+item-info-row-example-label = 예시 행

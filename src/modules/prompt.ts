@@ -91,15 +91,37 @@ export class GeminiPrompt {
     }
 
     private static activeWindows: Map<string, any> = new Map();
+    private static lastCloseTime: number = 0;
+    private static lastOpenTime: number = 0;
 
     static async openChat(item: Zotero.Item) {
         const itemId = String(item.id);
         const existingWin = this.activeWindows.get(itemId);
 
-        // Toggle Logic: If window exists and is open, close it (save state happens in onclose).
+        // Cooldown check to prevent accidental reopening via keyboard repeat
+        if (Date.now() - this.lastCloseTime < 300) {
+            return;
+        }
+
+        // Toggle Logic: Switch Focus instead of Closing
         if (existingWin && !existingWin.closed) {
-            existingWin.close();
-            this.activeWindows.delete(itemId);
+            // Prevent immediate toggle back if just opened (race condition with held keys)
+            if (Date.now() - this.lastOpenTime < 500) {
+                return;
+            }
+
+            const fm = (Components.classes as any)["@mozilla.org/focus-manager;1"].getService(Components.interfaces.nsIFocusManager);
+            const activeWin = fm.activeWindow;
+
+            if (activeWin === existingWin) {
+                // Chat is focused -> Switch to Main Zotero Window (Push Chat to background)
+                Zotero.getMainWindow().focus();
+                this.lastCloseTime = Date.now();
+            } else {
+                // Chat is hidden/background -> Bring to Front & Focus
+                existingWin.focus();
+                this.lastOpenTime = Date.now();
+            }
             return;
         }
 
@@ -128,10 +150,12 @@ export class GeminiPrompt {
                 item,
                 Zotero: Zotero,
                 GeminiService: GeminiService,
-                ContextBuilder: ContextBuilder
+                ContextBuilder: ContextBuilder,
+                GeminiPrompt: GeminiPrompt
             }
         );
 
         this.activeWindows.set(itemId, openWin);
+        this.lastOpenTime = Date.now();
     }
 }

@@ -4,6 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Gemini Chat</title>
+    <!-- Markdown-it and KaTeX (Bundled Locally) -->
+    <script src="assets/markdown-it.min.js"></script>
+    <link rel="stylesheet" href="assets/katex/katex.min.css">
+    <script src="assets/katex/katex.min.js"></script>
+    <script src="assets/katex/contrib/auto-render.min.js"></script>
+
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
@@ -40,7 +46,7 @@
             border-radius: 8px;
             max-width: 85%;
             word-wrap: break-word;
-            line-height: 1.4;
+            line-height: 1.5;
         }
 
         .message.user {
@@ -108,7 +114,6 @@
         .controls {
             display: flex;
             justify-content: space-between;
-            /* Changed from flex-end */
             align-items: center;
             margin-top: 5px;
         }
@@ -145,13 +150,63 @@
             font-weight: bold;
         }
 
-        .message .list-item {
-            margin-left: 20px;
-            display: block;
-        }
-
         .message p {
             margin-bottom: 8px;
+        }
+
+        .message ul,
+        .message ol {
+            margin-left: 20px;
+            margin-bottom: 8px;
+        }
+
+        .message li {
+            margin-bottom: 4px;
+        }
+
+        /* Table Styles */
+        .message table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .message th,
+        .message td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .message th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        .message tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        /* Code Block Styles */
+        .message pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: monospace;
+        }
+
+        .message code {
+            font-family: monospace;
+            background-color: rgba(0, 0, 0, 0.05);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .message pre code {
+            background-color: transparent;
+            padding: 0;
         }
     </style>
 </head>
@@ -170,6 +225,7 @@
         <span id="action-status"></span>
         <div>
             <button id="save-btn">Save Last Answer</button>
+            <button id="synthesize-btn" style="background-color: #17a2b8; color: white;">Synthesize Notes</button>
             <button id="exit-btn" style="background-color: #dc3545; color: white; margin-left: 10px;">End
                 Session</button>
         </div>
@@ -181,36 +237,29 @@
         let GeminiService;
         let ContextBuilder;
         let ZoteroObj;
+        let md; // Markdown-it instance
 
-        // Let's replace the AppendMessage and Add ParseMarkdown.
+        // Initialize markdown-it
+        function initMarkdown() {
+            if (window.markdownit) {
+                md = window.markdownit({
+                    html: false, // Security: disable HTML tags in source
+                    linkify: true,
+                    typographer: true,
+                    breaks: true
+                });
+            } else {
+                console.warn("markdown-it not loaded, falling back to plain text");
+            }
+        }
 
         function parseMarkdown(text) {
             if (!text) return "";
-            let html = text;
-
-            // Escape HTML (Basic) - prevent injection if we were worried, but here input is trusted-ish
-            html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-            // Headers
-            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-
-            // Bold
-            html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
-
-            // List Items (Simple)
-            html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<div class="list-item">• $1</div>');
-
-            // Horizontal Rule
-            html = html.replace(/^---$/gim, '<hr>');
-
-            // Newlines to <br>
-            // We want to avoid double breaks after headers/divs
-            html = html.replace(/\n/g, '<br>');
-            html = html.replace(/(<\/h[1-6]>|<\/div>|<\/hr>)<br>/g, '$1');
-
-            return html;
+            if (md) {
+                return md.render(text);
+            }
+            // Fallback (very basic)
+            return text.replace(/\n/g, '<br>');
         }
 
         /* ... window.onload ... */
@@ -221,6 +270,10 @@
                 GeminiService = args.GeminiService;
                 ZoteroObj = args.Zotero;
                 ContextBuilder = args.ContextBuilder;
+                const GeminiPrompt = args.GeminiPrompt;
+
+                // Initialize Markdown-it
+                initMarkdown();
 
                 const itemTitle = item.getField('title');
                 const setStatusToTitle = () => {
@@ -279,6 +332,7 @@
                 // Listeners
                 document.getElementById("send-btn").addEventListener("click", send);
                 document.getElementById("save-btn").addEventListener("click", saveAsNote);
+                document.getElementById("synthesize-btn").addEventListener("click", synthesizeNotes);
                 document.getElementById("exit-btn").addEventListener("click", exitSession);
 
                 const input = document.getElementById("chat-input");
@@ -293,11 +347,13 @@
                 document.addEventListener("keydown", (e) => {
                     if (e.key === "/" && (e.ctrlKey || e.metaKey)) {
                         e.preventDefault();
-                        // Logic: If this window is focused and user hits Ctrl+/, they want to toggle (hide) it.
-                        // Since we are inside the window, hiding it is effectively closing it (or window.close)
-                        // The prompt.ts toggle logic handles opening/closing from main window.
-                        // Here we just close ourselves.
-                        window.close();
+                        // Delegate to GeminiPrompt.openChat (Toggle)
+                        // This ensures cooldown logic in prompt.ts is triggered.
+                        if (GeminiPrompt) {
+                            GeminiPrompt.openChat(item);
+                        } else {
+                            window.close();
+                        }
                     }
                 });
 
@@ -359,6 +415,19 @@
             div.innerHTML = parseMarkdown(text);
 
             container.appendChild(div);
+
+            // Render Math (KaTeX)
+            if (window.renderMathInElement) {
+                renderMathInElement(div, {
+                    delimiters: [
+                        { left: '$$', right: '$$', display: true },
+                        { left: '$', right: '$', display: false },
+                        { left: '\\(', right: '\\)', display: false },
+                        { left: '\\[', right: '\\]', display: true }
+                    ],
+                    throwOnError: false
+                });
+            }
             div.scrollIntoView({ behavior: "smooth" });
 
             // Save raw text for session (not HTML)
@@ -375,6 +444,110 @@
             }
         }
 
+
+
+        async function synthesizeNotes() {
+            const status = document.getElementById("action-status");
+            status.textContent = "Synthesizing...";
+            status.style.color = "#007bff";
+
+            try {
+                // 1. Get all child notes
+                const childNotes = await ZoteroObj.Items.get(item.getNotes());
+                if (!childNotes || childNotes.length === 0) {
+                    showStatus("No notes found to synthesize.");
+                    return;
+                }
+
+                // 2. Filter valid source notes (Exclude "Final Knowledge...")
+                const sourceNotes = [];
+                const finalKnowledgeTitle = "Final Knowledge";
+
+                // Track existing Final Knowledge notes for backup
+                let existingFinalNotes = [];
+
+                for (let note of childNotes) {
+                    const noteTitle = note.getNoteTitle();
+                    if (noteTitle.startsWith(finalKnowledgeTitle)) {
+                        existingFinalNotes.push(note);
+                    } else {
+                        sourceNotes.push(note.getNote());
+                    }
+                }
+
+                if (sourceNotes.length === 0) {
+                    showStatus("No source notes found (excluding Final Knowledge).");
+                    return;
+                }
+
+                // 3. Backup existing Knowledge notes
+                for (let oldNote of existingFinalNotes) {
+                    // Simple backup logic: check current name, find max suffix?
+                    // Or just rename the current main "Final Knowledge" to "Final Knowledge_oldN"
+                    // The user requested: old1, old2, ...
+
+                    // Let's just find the main one "Final Knowledge" and rename it.
+                    // If "Final Knowledge_old1" exists, we leave it alone? 
+                    // User said: "backup existing knowledge note... old1, old2..."
+
+                    const title = oldNote.getNoteTitle();
+                    if (title === finalKnowledgeTitle) {
+                        // Find next available suffix
+                        let suffix = 1;
+                        while (true) {
+                            const candidate = `${finalKnowledgeTitle}_old${suffix}`;
+                            // Check if this name exists in our existingFinalNotes list
+                            const exists = existingFinalNotes.some(n => n.getNoteTitle() === candidate);
+                            if (!exists) {
+                                oldNote.setNoteTitle(candidate); // Helper might not exist, setNote updates content?
+                                // Zotero Note title is derived from first line usually (HTML).
+                                // We need to update the content header to change the title effectively.
+
+                                // Actually, Zotero Items have 'setField' but notes are special.
+                                // note.setNote() updates content.
+                                // We should prepend/replace the <h1> header.
+                                let content = oldNote.getNote();
+                                // Replace first <h1>Final Knowledge</h1> with <h1>Final Knowledge_oldN</h1>
+                                // Regex replace
+                                content = content.replace(/<h1>Final Knowledge<\/h1>/i, `<h1>${candidate}</h1>`);
+                                oldNote.setNote(content);
+                                await oldNote.saveTx();
+                                break;
+                            }
+                            suffix++;
+                        }
+                    }
+                }
+
+                // 4. Generate Synthesis
+                const synthesisResult = await GeminiService.synthesize(sourceNotes);
+
+                // Clean markdown code blocks from Gemini
+                let finalHtml = synthesisResult.replace(/```html/g, "").replace(/```/g, "").trim();
+
+                // Ensure it starts with the correct Title if Gemini forgot
+                if (!finalHtml.includes(`<h1>${finalKnowledgeTitle}</h1>`)) {
+                    finalHtml = `<h1>${finalKnowledgeTitle}</h1>\n${finalHtml}`;
+                }
+
+                // 5. Create New Note
+                const newNote = new ZoteroObj.Item('note');
+                newNote.parentID = item.id;
+                newNote.setNote(finalHtml);
+                newNote.addTag("gemini-knowledge");
+                await newNote.saveTx();
+
+                status.textContent = "Knowledge Synthesized!";
+                status.style.color = "#28a745";
+
+            } catch (e) {
+                console.error(e);
+                status.textContent = "Error: " + e.message;
+                status.style.color = "#dc3545";
+            }
+            setTimeout(() => status.textContent = "", 3000);
+        }
+
         function exitSession() {
             if (confirm("End current session? This will clear the chat history.")) {
                 GeminiService.clearSession(item.id);
@@ -382,13 +555,20 @@
             }
         }
 
-        // Removing old DOM-reading save logic from saveAsNote too
         function saveAsNote() {
             const session = GeminiService.getSession(item.id);
-            // Find last gemini message
-            const lastGeminiMsg = session.slice().reverse().find(m => m.role === 'gemini');
 
-            if (!lastGeminiMsg) {
+            // Find last gemini message
+            // We iterate backwards to find the last response
+            let lastGeminiIdx = -1;
+            for (let i = session.length - 1; i >= 0; i--) {
+                if (session[i].role === 'gemini') {
+                    lastGeminiIdx = i;
+                    break;
+                }
+            }
+
+            if (lastGeminiIdx === -1) {
                 const status = document.getElementById("action-status");
                 status.textContent = "No Gemini response found.";
                 status.style.color = "#000";
@@ -396,19 +576,35 @@
                 return;
             }
 
-            // Format as HTML
-            const htmlContent = `<div>${parseMarkdown(lastGeminiMsg.text)}</div>`;
+            const lastGeminiMsg = session[lastGeminiIdx];
+
+            // Find preceding user question
+            let questionText = "Gemini Analysis";
+            if (lastGeminiIdx > 0 && session[lastGeminiIdx - 1].role === 'user') {
+                questionText = session[lastGeminiIdx - 1].text;
+            }
+
+            // Combine Question (as Header) and Answer
+            // Using Markdown to format the header
+            const combinedMarkdown = `# ${questionText}\n\n${lastGeminiMsg.text}`;
+            const htmlContent = parseMarkdown(combinedMarkdown);
 
             const noteItem = new ZoteroObj.Item('note');
             noteItem.parentID = item.id;
-            noteItem.setNote(`<h1>Gemini Analysis</h1>${htmlContent}`);
+            noteItem.setNote(htmlContent);
             noteItem.addTag("gemini-analysis");
             noteItem.saveTx().then(() => {
                 const status = document.getElementById("action-status");
                 status.textContent = "Saved to New Note!";
-                status.style.color = "#000";
+                status.style.color = "#28a745";
                 setTimeout(() => status.textContent = "", 3000);
             });
+        }
+
+        function showStatus(msg) {
+            const status = document.getElementById("action-status");
+            status.textContent = msg;
+            setTimeout(() => status.textContent = "", 3000);
         }
     </script>
 </body>

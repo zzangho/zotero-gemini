@@ -1,0 +1,11 @@
+startup-begin = 애드온 로딩 중
+startup-finish = 애드온 준비 완료
+menuitem-label = Zotero Gemini: 도움말 예시
+menupopup-label = Zotero Gemini: 메뉴 팝업
+menuitem-submenulabel = Zotero Gemini
+menuitem-filemenulabel = Zotero Gemini: 파일 메뉴
+prefs-title = Zotero Gemini 설정
+prefs-table-title = 제목
+prefs-table-detail = 상세
+tabpanel-lib-tab-label = 라이브러리 탭
+tabpanel-reader-tab-label = 리더 탭
