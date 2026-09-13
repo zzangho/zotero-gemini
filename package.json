@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "katex": "^0.16.37",
-    "markdown-it": "^14.1.1",
+    "markdown-it": "^15.0.1",
     "zotero-plugin-toolkit": "^5.1.2"
   },
   "devDependencies": {
